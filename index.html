@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>NST Reminder — attendance, assignments, QOTD, no backend</title>
+<meta name="description" content="A local-first browser extension for my.newtonschool.co. Tracks attendance, assignments, contests, classes and QOTD. Nothing leaves your machine." />
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<link rel="preconnect" href="https://api.fontshare.com">
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&display=swap">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  /* ===== TOKENS: 4 colors total. Dark editorial base, one accent. ===== */
+  :root{
+    --paper: #000000;       /* page background — matches the Newton portal's true black */
+    --paper-2: #121212;     /* raised surface: cards, popup frame */
+    --ink: #F0F0F0;         /* primary text — off-white, not pure white */
+    --ink-soft: #8E8E8E;    /* secondary text */
+    --line: #262626;        /* hairline borders on dark */
+    --accent: #3B82F6;      /* Newton's own blue — matches "Home" nav + active states in the portal */
+    --surface: #F0F0F0;     /* solid-button fill: light-on-dark */
+    --surface-ink: #000000; /* text on solid-button fill */
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'General Sans',system-ui,sans-serif;
+  }
+  .font-mono{font-family:'JetBrains Mono',monospace;}
+  .rule{border-color:var(--line);}
+  .accent{color:var(--accent);}
+  .accent-bg{background:var(--accent);}
+
+  /* underline sweep on hover — used for text links, not whole-card glow */
+  .sweep{position:relative; text-decoration:none;}
+  .sweep::after{
+    content:"";position:absolute;left:0;right:100%;bottom:-2px;height:2px;
+    background:var(--accent); transition:right .25s ease;
+  }
+  .sweep:hover::after{right:0;}
+
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    min-height:48px;padding:0 24px;border-radius:2px;font-weight:600;font-size:14px;
+    transition:transform .15s ease, background .15s ease, color .15s ease;
+  }
+  .btn-solid{background:var(--surface); color:var(--surface-ink);}
+  .btn-solid:hover{background:var(--accent); color:#fff; transform:translateY(-1px);}
+  .btn-outline{background:transparent; color:var(--ink); border:1.5px solid var(--line);}
+  .btn-outline:hover{border-color:var(--accent); color:var(--accent); transform:translateY(-1px);}
+  .btn-accent{background:var(--accent); color:#fff;}
+  .btn-accent:hover{background:#e04400; transform:translateY(-1px);}
+
+  .reveal{opacity:0; transform:translateY(14px); transition:opacity .5s ease, transform .5s ease;}
+  .reveal.in{opacity:1; transform:none;}
+
+  /* ===== Download card ===== */
+  .dl-card{border:1.5px solid var(--line); background:var(--paper-2);}
+  .dl-row{display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--line); font-size:13px;}
+  .dl-row:last-of-type{border-bottom:none;}
+
+  /* ===== Extension popup mock (kept, tabs unchanged) ===== */
+  .ext-frame{
+    width:340px; border-radius:4px; background:var(--paper-2);
+    border:1.5px solid var(--line); overflow:hidden;
+  }
+  .ext-head{display:flex;align-items:center;gap:8px;padding:14px 16px 10px;border-bottom:1px solid var(--line);}
+  .ext-body{padding:14px 16px; min-height:280px;}
+  .ext-page{display:none;}
+  .ext-page.active{display:block; animation:fadein .2s ease;}
+  @keyframes fadein{from{opacity:0;transform:translateY(3px);}to{opacity:1;transform:none;}}
+  .ext-tabs{display:grid;grid-template-columns:repeat(4,1fr); border-top:1px solid var(--line); background:var(--paper);}
+  .ext-tab{
+    display:flex;flex-direction:column;align-items:center;gap:4px;
+    padding:10px 2px 9px; cursor:pointer; color:var(--ink-soft);
+    font-size:10.5px; font-weight:600; border:0; background:none;
+    position:relative; transition:color .2s ease;
+  }
+  .ext-tab.active{color:var(--accent);}
+  .ext-tab.active::before{content:"";position:absolute;top:-1px;left:24%;right:24%;height:2.5px;background:var(--accent);}
+  .hero-card{border-radius:4px; padding:14px 16px; background:var(--paper); border:1px solid var(--line); color:var(--ink);}
+  .bar-track{height:6px;border-radius:999px;background:var(--line);position:relative;overflow:hidden;}
+  .bar-fill{height:100%;background:var(--accent);border-radius:inherit;}
+  .alert-row{display:flex;flex-direction:column;gap:2px;padding:9px 11px;border-left:3px solid transparent;font-size:12px;margin-bottom:7px;background:var(--paper);border:1px solid var(--line);border-left-width:3px;}
+  .a-bad{border-left-color:#E05C4E;}
+  .a-warn{border-left-color:#D6A33B;}
+  .a-ok{border-left-color:#3FBE82;}
+  .swatch-btn{
+    display:flex;flex-direction:column;align-items:center;gap:5px;
+    padding:7px 2px; border:1px solid var(--line); font-size:9.5px; color:var(--ink-soft); cursor:pointer;
+    transition:border-color .2s ease; background:var(--paper);
+  }
+  .swatch-btn.active{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent);}
+  .theme-sw{width:22px;height:22px;border-radius:999px;border:1px solid var(--line);}
+  .set-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:11.5px;}
+  .set-row:last-child{border-bottom:none;}
+  .toggle{width:30px;height:17px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;flex:none;}
+  .toggle.on{background:var(--accent);}
+  .toggle::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:left .15s ease;}
+  .toggle.on::after{left:15px;}
+
+  .timeline-line{position:absolute; left:17px; top:6px; bottom:6px; width:1px; background:var(--line);}
+
+  /* marquee strip */
+  .marquee{overflow:hidden; white-space:nowrap; border-top:1px solid var(--line); border-bottom:1px solid var(--line);}
+  .marquee-track{display:inline-block; animation:marquee 18s linear infinite;}
+  @keyframes marquee{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+
+  .avatar{
+    width:64px;height:64px;border-radius:50%;background:var(--accent);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;
+    font-weight:600;font-size:20px; transition:transform .25s ease;
+  }
+  .avatar:hover{transform:rotate(-6deg) scale(1.05);}
+
+  .name-sweep{position:relative; display:inline-block; transition:transform .2s ease;}
+  .name-sweep::after{content:"";position:absolute;left:0;bottom:-3px;width:0;height:3px;background:var(--accent);transition:width .3s ease;}
+  .name-card:hover .name-sweep{transform:translateY(-2px); color:var(--accent);}
+  .name-card:hover .name-sweep::after{width:100%;}
+  .name-card{background:var(--paper-2); transition:box-shadow .25s ease, transform .25s ease, border-color .25s ease;}
+  .name-card:hover{box-shadow:0 10px 30px rgba(255,77,0,0.15); transform:translateY(-3px); border-color:var(--accent);}
+</style>
+</head>
+<body class="antialiased">
+
+<!-- ===== SECTION: NAVBAR ===== -->
+<header class="sticky top-0 z-50 bg-[var(--paper)]/90 backdrop-blur border-b rule">
+  <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+    <a href="#top" class="font-semibold text-[15px] tracking-tight">NST Reminder</a>
+    <nav class="hidden md:flex items-center gap-8 text-[13px] text-[var(--ink-soft)]">
+      <a href="#showcase" class="sweep">Showcase</a>
+      <a href="#features" class="sweep">Features</a>
+      <a href="#install" class="sweep">Install</a>
+      <a href="#footer" class="sweep">Contact</a>
+    </nav>
+    <a href="./nst-reminder-extension-v0.2.0.zip" download="nst-reminder-extension-v0.2.0.zip" class="btn btn-solid !min-h-[40px] !px-5 !text-[13px]">Download ZIP</a>
+  </div>
+</header>
+
+<!-- ===== SECTION: HERO — headline + real download card, no popup mock here ===== -->
+<section id="top" class="pt-20 pb-24 px-6 border-b rule">
+  <div class="max-w-6xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
+
+    <div class="reveal">
+      <div class="inline-flex items-center gap-2 font-mono text-[11px] text-[var(--ink-soft)] mb-6">
+        <span class="px-2 py-0.5 border rule">v0.2.0</span>
+        <span>· manifest v3 · my.newtonschool.co</span>
+      </div>
+      <h1 class="text-[46px] sm:text-[58px] leading-[1.03] font-semibold tracking-tight mb-7">
+        Stop refreshing<br/>the portal.
+      </h1>
+      <p class="text-[17px] text-[var(--ink-soft)] leading-relaxed max-w-[440px] mb-10">
+        NST Reminder reads your Newton School dashboard — attendance, assignments, classes, contests, QOTD — and tells you what actually needs you right now. It runs entirely in your browser. No server, no account, nothing uploaded anywhere.
+      </p>
+      <div class="flex flex-wrap items-center gap-4 mb-10">
+        <a href="./nst-reminder-extension-v0.2.0.zip" download="nst-reminder-extension-v0.2.0.zip" class="btn btn-accent">Download ZIP v0.2.0</a>
+        <a href="https://github.com/yusufcodes-india/newton-extention" target="_blank" rel="noopener" class="btn btn-outline">View on GitHub</a>
+      </div>
+      <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-[12.5px] text-[var(--ink-soft)] font-mono">
+        <span>No backend</span>
+        <span>·</span>
+        <span>Local-first</span>
+        <span>·</span>
+        <span>MV3</span>
+      </div>
+    </div>
+
+    <!-- real download card: file name, size, contents -->
+    <div class="reveal" style="transition-delay:.08s">
+      <div class="dl-card p-6">
+        <div class="flex items-start justify-between mb-4">
+          <div>
+            <p class="font-mono text-[13px] font-semibold break-all">nst-reminder-extension-v0.2.0.zip</p>
+            <p class="text-[12px] text-[var(--ink-soft)] mt-0.5">46 KB · Updated Oct 13, 2026</p>
+          </div>
+          <span class="font-mono text-[10.5px] border rule px-2 py-0.5 flex-none">MV3</span>
+        </div>
+
+        <div class="mb-4">
+          <div class="dl-row"><span class="text-[var(--ink-soft)]">Entry point</span><span class="font-mono">manifest.json</span></div>
+          <div class="dl-row"><span class="text-[var(--ink-soft)]">Permissions</span><span class="font-mono">storage, alarms, notifications</span></div>
+          <div class="dl-row"><span class="text-[var(--ink-soft)]">Host</span><span class="font-mono">my.newtonschool.co</span></div>
+          <div class="dl-row"><span class="text-[var(--ink-soft)]">SHA-256</span><span class="font-mono text-[10px] break-all">5e32e429…ee0ffbc1</span></div>
+        </div>
+
+        <a href="./nst-reminder-extension-v0.2.0.zip" download="nst-reminder-extension-v0.2.0.zip" class="btn btn-solid w-full mb-3">Download ZIP</a>
+
+        <p class="text-[11px] text-[var(--ink-soft)] mb-2">or clone it directly</p>
+        <code class="font-mono text-[11.5px] block border rule px-3 py-2.5 overflow-x-auto whitespace-nowrap">git clone https://github.com/yusufcodes-india/newton-extention.git</code>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ===== SECTION: SHOWCASE MOCK — interactive 4-tab popup, tabs unchanged, settings expanded ===== -->
+<section id="showcase" class="py-24 px-6 border-b rule">
+  <div class="max-w-6xl mx-auto">
+    <div class="reveal max-w-xl mb-14">
+      <span class="font-mono text-[11px] text-[var(--ink-soft)]">THE POPUP</span>
+      <h2 class="text-[32px] sm:text-[38px] font-semibold tracking-tight mt-2 mb-4">This is the real layout. Click it.</h2>
+      <p class="text-[var(--ink-soft)] leading-relaxed">Four tabs, no nested menus. Numbers below are the ones from the actual popup: <span class="font-mono">82%</span> attendance, <span class="font-mono">205/250</span> classes, <span class="font-mono">6</span> bunks left before the <span class="font-mono">75%</span> threshold.</p>
+    </div>
+
+    <div class="grid lg:grid-cols-[auto_1fr] gap-14 items-start">
+      <!-- interactive mock -->
+      <div class="flex justify-center">
+        <div class="ext-frame" id="mock">
+          <div class="ext-head">
+            <span class="font-semibold text-[13px] flex-1">NST Reminder</span>
+            <span class="font-mono text-[10px] text-[var(--ink-soft)]">synced 4m ago</span>
+            <button class="w-7 h-7 border rule flex items-center justify-center accent text-[13px]">↻</button>
+          </div>
+
+          <div class="ext-body">
+            <!-- Attendance -->
+            <div class="ext-page active" data-page="attendance">
+              <div class="hero-card">
+                <div class="flex items-baseline justify-between">
+                  <span class="text-[34px] font-semibold leading-none">82<span class="text-[15px] font-semibold opacity-80">%</span></span>
+                  <span class="font-mono text-[11px] text-right opacity-80">205/250<br/>6 bunks left</span>
+                </div>
+                <div class="bar-track mt-3"><div class="bar-fill" style="width:82%"></div></div>
+              </div>
+              <div class="mt-3 space-y-2">
+                <div class="bg-[var(--paper)] px-3 py-2 text-[11.5px] flex items-center justify-between"><span>Data Structures</span><span class="font-mono font-semibold">88%</span></div>
+                <div class="bg-[var(--paper)] px-3 py-2 text-[11.5px] flex items-center justify-between"><span>Web Dev</span><span class="font-mono font-semibold" style="color:#D6A33B">76%</span></div>
+                <div class="bg-[var(--paper)] px-3 py-2 text-[11.5px] flex items-center justify-between"><span>Aptitude</span><span class="font-mono font-semibold">91%</span></div>
+              </div>
+            </div>
+
+            <!-- Alerts -->
+            <div class="ext-page" data-page="alerts">
+              <div class="alert-row a-bad"><b>Overdue: DP Assignment 4</b><span class="text-[var(--ink-soft)]">Was due yesterday, 11:59 PM</span></div>
+              <div class="alert-row a-warn"><b>Due soon: Web Dev quiz</b><span class="text-[var(--ink-soft)]">Due in 2h 15m</span></div>
+              <div class="alert-row a-warn"><b>Attendance close to limit</b><span class="text-[var(--ink-soft)]">76% in Web Dev, 2 bunks left</span></div>
+              <div class="alert-row a-ok"><b>Contest live</b><span class="text-[var(--ink-soft)]">Weekly CodeRush #42 is running</span></div>
+            </div>
+
+            <!-- Tasks -->
+            <div class="ext-page" data-page="tasks">
+              <p class="font-mono text-[10px] text-[var(--ink-soft)] mb-2 uppercase tracking-wide">Assignments</p>
+              <div class="bg-[var(--paper)] px-3 py-2 text-[11.5px] mb-1.5 border-l-2" style="border-color:#E05C4E">DP Assignment 4 — overdue</div>
+              <div class="bg-[var(--paper)] px-3 py-2 text-[11.5px] mb-3">System Design Quiz — tomorrow</div>
+              <p class="font-mono text-[10px] text-[var(--ink-soft)] mb-2 uppercase tracking-wide">Question of the day</p>
+              <div class="bg-[var(--paper)] px-3 py-2 text-[11.5px] border border-dashed rule">Unsolved · streak 12 · 4h left</div>
+            </div>
+
+            <!-- Settings — expanded with real config, WhatsApp removed -->
+            <div class="ext-page" data-page="settings">
+              <p class="font-mono text-[10px] text-[var(--ink-soft)] mb-2 uppercase tracking-wide">Portal theme</p>
+              <div class="grid grid-cols-4 gap-1.5 mb-4">
+                <button class="swatch-btn active" data-theme="off"><span class="theme-sw" style="background:#fff"></span>Light</button>
+                <button class="swatch-btn" data-theme="dark"><span class="theme-sw" style="background:#111"></span>Dark</button>
+                <button class="swatch-btn" data-theme="warm"><span class="theme-sw" style="background:#3a2a1a"></span>Warm</button>
+                <button class="swatch-btn" data-theme="auto"><span class="theme-sw" style="background:linear-gradient(90deg,#fff 50%,#111 50%)"></span>Auto</button>
+              </div>
+
+              <p class="font-mono text-[10px] text-[var(--ink-soft)] mb-1 uppercase tracking-wide">Digest &amp; thresholds</p>
+              <div class="mb-4">
+                <div class="set-row"><span>Daily digest time</span><span class="font-mono">21:00</span></div>
+                <div class="set-row"><span>Attendance threshold</span><span class="font-mono">75%</span></div>
+                <div class="set-row"><span>Assignment leads</span><span class="font-mono">24h / 1h</span></div>
+                <div class="set-row"><span>Class lead</span><span class="font-mono">10 min</span></div>
+                <div class="set-row"><span>Quiet hours</span><div class="toggle on" id="quietToggle"></div></div>
+              </div>
+
+              <p class="font-mono text-[10px] text-[var(--ink-soft)] mb-1 uppercase tracking-wide">Sync</p>
+              <div class="mb-4">
+                <div class="set-row"><span>Attendance</span><div class="toggle on"></div></div>
+                <div class="set-row"><span>Assignments</span><div class="toggle on"></div></div>
+                <div class="set-row"><span>Contests</span><div class="toggle on"></div></div>
+                <div class="set-row"><span>Timetable</span><div class="toggle on"></div></div>
+                <div class="set-row"><span>QOTD</span><div class="toggle on"></div></div>
+              </div>
+
+              <p class="text-[10.5px] text-[var(--ink-soft)] leading-snug">Applies instantly to open Newton tabs. Token stays in your browser — the only network calls go to the my.newtonschool.co API.</p>
+            </div>
+          </div>
+
+          <div class="ext-tabs">
+            <button class="ext-tab active" data-target="attendance">Attendance</button>
+            <button class="ext-tab" data-target="alerts">Alerts</button>
+            <button class="ext-tab" data-target="tasks">Tasks</button>
+            <button class="ext-tab" data-target="settings">Settings</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- callouts -->
+      <div class="space-y-6 pt-2">
+        <div class="reveal border-b rule pb-5">
+          <span class="font-mono text-[11px] accent">01 / Attendance</span>
+          <p class="text-[14px] text-[var(--ink-soft)] mt-1.5 leading-relaxed">Overall percentage, bunks left before your threshold, per-subject breakdown — pulled straight from the portal's own numbers, nothing guessed.</p>
+        </div>
+        <div class="reveal border-b rule pb-5" style="transition-delay:.05s">
+          <span class="font-mono text-[11px] accent">02 / Alerts</span>
+          <p class="text-[14px] text-[var(--ink-soft)] mt-1.5 leading-relaxed">Everything ranked by urgency. Overdue first, then what's closing in, then anything live. One list, no digging through tabs.</p>
+        </div>
+        <div class="reveal border-b rule pb-5" style="transition-delay:.1s">
+          <span class="font-mono text-[11px] accent">03 / Tasks</span>
+          <p class="text-[14px] text-[var(--ink-soft)] mt-1.5 leading-relaxed">Assignments, classes, contests, QOTD in one scroll. Auto-detected items are flagged so you know which ones to double-check.</p>
+        </div>
+        <div class="reveal pb-5" style="transition-delay:.15s">
+          <span class="font-mono text-[11px] accent">04 / Settings</span>
+          <p class="text-[14px] text-[var(--ink-soft)] mt-1.5 leading-relaxed">Digest time, thresholds, quiet hours, per-feature sync toggles, and a portal theme switcher that recolors my.newtonschool.co itself.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== SECTION: FEATURES ===== -->
+<section id="features" class="py-24 px-6 border-b rule">
+  <div class="max-w-6xl mx-auto">
+    <div class="reveal max-w-xl mb-14">
+      <span class="font-mono text-[11px] text-[var(--ink-soft)]">WHAT IT WATCHES</span>
+      <h2 class="text-[32px] sm:text-[38px] font-semibold tracking-tight mt-2">Five things it tracks. One thing it saves: your time.</h2>
+    </div>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-10">
+
+      <div class="reveal">
+        <p class="font-mono text-[11px] text-[var(--ink-soft)] mb-2">01</p>
+        <h3 class="font-semibold text-[16px] mb-1.5">Attendance + bunk count</h3>
+        <p class="text-[13.5px] text-[var(--ink-soft)] leading-relaxed">Live percentage, per-subject breakdown, and exactly how many classes you can skip before you cross your own 75% line.</p>
+      </div>
+
+      <div class="reveal" style="transition-delay:.04s">
+        <p class="font-mono text-[11px] text-[var(--ink-soft)] mb-2">02</p>
+        <h3 class="font-semibold text-[16px] mb-1.5">Assignment deadlines</h3>
+        <p class="text-[13.5px] text-[var(--ink-soft)] leading-relaxed">24-hour, 1-hour, and overdue nudges, pulled from the portal and sorted so the most urgent one sits on top.</p>
+      </div>
+
+      <div class="reveal" style="transition-delay:.08s">
+        <p class="font-mono text-[11px] text-[var(--ink-soft)] mb-2">03</p>
+        <h3 class="font-semibold text-[16px] mb-1.5">Classes &amp; join links</h3>
+        <p class="text-[13.5px] text-[var(--ink-soft)] leading-relaxed">A heads-up 10 minutes before a timetable class, with the join link already in the notification.</p>
+      </div>
+
+      <div class="reveal" style="transition-delay:.12s">
+        <p class="font-mono text-[11px] text-[var(--ink-soft)] mb-2">04</p>
+        <h3 class="font-semibold text-[16px] mb-1.5">Coding contests</h3>
+        <p class="text-[13.5px] text-[var(--ink-soft)] leading-relaxed">A ping the moment a contest goes live, plus what's coming up so you can actually plan your week around it.</p>
+      </div>
+
+      <div class="reveal" style="transition-delay:.16s">
+        <p class="font-mono text-[11px] text-[var(--ink-soft)] mb-2">05</p>
+        <h3 class="font-semibold text-[16px] mb-1.5">QOTD streak nudges</h3>
+        <p class="text-[13.5px] text-[var(--ink-soft)] leading-relaxed">An evening reminder if today's Question of the Day is unsolved — Bearer token when you're signed in, anonymous fallback when you're not.</p>
+      </div>
+
+      <div class="reveal" style="transition-delay:.2s">
+        <p class="font-mono text-[11px] text-[var(--ink-soft)] mb-2">06</p>
+        <h3 class="font-semibold text-[16px] mb-1.5">Portal theme switcher</h3>
+        <p class="text-[13.5px] text-[var(--ink-soft)] leading-relaxed">Light, dark, warm, or auto — recolors the whole my.newtonschool.co page instantly, not just the popup.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ===== SECTION: INSTALL ===== -->
+<section id="install" class="py-24 px-6 border-b rule">
+  <div class="max-w-4xl mx-auto">
+    <div class="reveal max-w-xl mb-16">
+      <span class="font-mono text-[11px] text-[var(--ink-soft)]">GET IT RUNNING</span>
+      <h2 class="text-[32px] sm:text-[38px] font-semibold tracking-tight mt-2 mb-4">Four steps. No store listing, so it loads unpacked.</h2>
+      <p class="text-[var(--ink-soft)] leading-relaxed">Same steps in Opera GX and Chrome — both read the same Manifest V3 format.</p>
+    </div>
+
+    <div class="relative pl-14">
+      <div class="timeline-line"></div>
+
+      <div class="reveal relative mb-10">
+        <div class="absolute -left-14 top-0 w-9 h-9 border rule flex items-center justify-center font-mono text-[13px] font-semibold">1</div>
+        <h3 class="font-semibold text-[17px] mb-1.5">Download and unzip</h3>
+        <p class="text-[14px] text-[var(--ink-soft)] leading-relaxed mb-3">Grab the same ZIP from the hero section, unzip it somewhere permanent — the browser keeps pointing at that exact folder, so don't move it afterward.</p>
+        <a href="./nst-reminder-extension-v0.2.0.zip" download="nst-reminder-extension-v0.2.0.zip" class="font-mono text-[12.5px] block border rule px-4 py-3 accent sweep w-fit">./nst-reminder-extension-v0.2.0.zip</a>
+      </div>
+
+      <div class="reveal relative mb-10" style="transition-delay:.05s">
+        <div class="absolute -left-14 top-0 w-9 h-9 border rule flex items-center justify-center font-mono text-[13px] font-semibold">2</div>
+        <h3 class="font-semibold text-[17px] mb-1.5">Turn on Developer Mode</h3>
+        <p class="text-[14px] text-[var(--ink-soft)] leading-relaxed mb-3">Open your extensions page and flip the switch in the top corner.</p>
+        <div class="flex flex-wrap gap-2">
+          <code class="font-mono text-[12px] border rule px-3 py-1.5">opera://extensions</code>
+          <code class="font-mono text-[12px] border rule px-3 py-1.5">chrome://extensions</code>
+        </div>
+      </div>
+
+      <div class="reveal relative mb-10" style="transition-delay:.1s">
+        <div class="absolute -left-14 top-0 w-9 h-9 border rule flex items-center justify-center font-mono text-[13px] font-semibold">3</div>
+        <h3 class="font-semibold text-[17px] mb-1.5">Load unpacked</h3>
+        <p class="text-[14px] text-[var(--ink-soft)] leading-relaxed">Click "Load unpacked" and select the folder with <code class="font-mono text-[12px] accent">manifest.json</code> in it — not the ZIP itself. Pin NST Reminder to the toolbar when prompted.</p>
+      </div>
+
+      <div class="reveal relative" style="transition-delay:.15s">
+        <div class="absolute -left-14 top-0 w-9 h-9 border rule flex items-center justify-center font-mono text-[13px] font-semibold">4</div>
+        <h3 class="font-semibold text-[17px] mb-1.5">Log in once</h3>
+        <p class="text-[14px] text-[var(--ink-soft)] leading-relaxed">Open my.newtonschool.co and sign in as usual. The extension picks up your session token automatically — nothing to paste, no password stored anywhere.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== SECTION: CREATOR / FOOTER ===== -->
+<footer id="footer">
+  <div class="marquee py-3">
+    <div class="marquee-track font-mono text-[11px] tracking-widest text-[var(--ink-soft)]">
+      LOCAL-FIRST&nbsp;&nbsp;•&nbsp;&nbsp;NO TRACKING&nbsp;&nbsp;•&nbsp;&nbsp;BUILT FOR NST&nbsp;&nbsp;•&nbsp;&nbsp;LOCAL-FIRST&nbsp;&nbsp;•&nbsp;&nbsp;NO TRACKING&nbsp;&nbsp;•&nbsp;&nbsp;BUILT FOR NST&nbsp;&nbsp;•&nbsp;&nbsp;LOCAL-FIRST&nbsp;&nbsp;•&nbsp;&nbsp;NO TRACKING&nbsp;&nbsp;•&nbsp;&nbsp;BUILT FOR NST&nbsp;&nbsp;•
+    </div>
+  </div>
+
+  <div class="max-w-6xl mx-auto px-6 py-20">
+    <div class="name-card border rule p-8 md:p-10 flex flex-col md:flex-row items-start md:items-center gap-8 mb-10">
+      <div class="avatar flex-none">YH</div>
+      <div class="flex-1">
+        <p class="font-mono text-[11px] text-[var(--ink-soft)] mb-1">BUILT BY</p>
+        <h3 class="name-sweep text-[28px] font-semibold tracking-tight">Yusuf Huzaifa Tarwala</h3>
+        <p class="text-[13.5px] text-[var(--ink-soft)] mt-2 max-w-md">Indie hacker in Surat. Built this because I kept bunking attendance checks at NST.</p>
+      </div>
+      <div class="flex gap-3 flex-none">
+        <a href="https://github.com/yusufcodes-india" target="_blank" rel="noopener" class="btn btn-outline !min-h-[44px] !px-5">GitHub</a>
+        <a href="#" target="_blank" rel="noopener" class="btn btn-outline !min-h-[44px] !px-5">LinkedIn</a>
+        <a href="https://github.com/yusufcodes-india/newton-extention/issues" target="_blank" rel="noopener" class="btn btn-outline !min-h-[44px] !px-5">Report bug</a>
+      </div>
+    </div>
+
+    <p class="font-mono text-[11.5px] text-[var(--ink-soft)] mb-10">v0.2.0 — QOTD Bearer + anon fallback, portal theme switcher.</p>
+
+    <p class="text-center text-[12px] text-[var(--ink-soft)]">NST Reminder is an independent, unofficial companion for my.newtonschool.co. Not affiliated with Newton School.</p>
+  </div>
+</footer>
+
+<script>
+  // ===== Scroll-reveal: IntersectionObserver, no scrollIntoView =====
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  // ===== Popup mock: tab switching (unchanged behavior) =====
+  const mock = document.getElementById('mock');
+  mock.querySelectorAll('.ext-tab[data-target]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      mock.querySelectorAll('.ext-tab[data-target]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const target = btn.dataset.target;
+      mock.querySelectorAll('.ext-page').forEach(p => p.classList.toggle('active', p.dataset.page === target));
+    });
+  });
+
+  // ===== Popup mock: theme swatch active state (cosmetic demo only) =====
+  mock.querySelectorAll('.swatch-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      mock.querySelectorAll('.swatch-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  // ===== Popup mock: quiet-hours toggle demo =====
+  const qt = document.getElementById('quietToggle');
+  qt.addEventListener('click', () => qt.classList.toggle('on'));
+</script>
+</body>
+</html>
