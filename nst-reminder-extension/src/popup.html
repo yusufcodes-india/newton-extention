@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>NST Reminder</h1>
+      <span id="syncAge"></span>
+      <button id="refresh" title="Refresh now" aria-label="Refresh now">↻</button>
+    </header>
+    <div id="syncDetail" class="debug"></div>
+    <div id="stale" hidden>Data is stale. Open the Newton portal to refresh.</div>
+    <div id="loggedOut" hidden>Not connected. <a href="https://my.newtonschool.co" target="_blank" rel="noopener">Sign in to Newton</a> to resume auto-sync.</div>
+
+    <main>
+      <!-- Page 1: Attendance -->
+      <section class="page" id="page-attendance" role="tabpanel" aria-labelledby="tab-attendance">
+        <div id="attend"></div>
+      </section>
+
+      <!-- Page 2: Alerts -->
+      <section class="page" id="page-alerts" role="tabpanel" aria-labelledby="tab-alerts" hidden>
+        <ul id="alerts"></ul>
+      </section>
+
+      <!-- Page 3: Assignments and everything else -->
+      <section class="page" id="page-assignments" role="tabpanel" aria-labelledby="tab-assignments" hidden>
+        <h2>Assignments</h2>
+        <ul id="assign"></ul>
+        <h2>Contests</h2>
+        <ul id="contests"></ul>
+        <h2>Today's classes</h2>
+        <ul id="today"></ul>
+        <h2>Question of the Day</h2>
+        <div id="qotd"></div>
+      </section>
+
+      <!-- Page 4: Settings + WhatsApp -->
+      <section class="page" id="page-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+        <h2>Portal theme</h2>
+        <div id="themes" class="seg">
+          <button type="button" data-theme="off" aria-pressed="false"><i class="sw sw-off"></i>Original</button>
+          <button type="button" data-theme="dark" aria-pressed="false"><i class="sw sw-dark"></i>Dark</button>
+          <button type="button" data-theme="dim" aria-pressed="false"><i class="sw sw-dim"></i>Dim</button>
+          <button type="button" data-theme="warm" aria-pressed="false"><i class="sw sw-warm"></i>Warm</button>
+          <button type="button" data-theme="auto" aria-pressed="false"><i class="sw sw-auto"></i>Auto</button>
+        </div>
+        <p class="hint">Changes every page on my.newtonschool.co right away. Auto follows your system setting.</p>
+
+        <form id="opts">
+          <h2>Reminders</h2>
+          <div class="field"><label for="digestTime">Daily digest time</label><input id="digestTime" type="time" /></div>
+          <div class="field"><label for="threshold">Attendance threshold (%)</label><input id="threshold" type="number" min="1" max="99" /></div>
+          <div class="field"><label for="leads">Assignment alerts (minutes before)</label><input id="leads" placeholder="1440, 60" /></div>
+          <div class="field"><label for="classLead">Class alert (minutes before)</label><input id="classLead" type="number" min="1" max="120" /></div>
+          <div class="field"><label for="nudgeHour">QOTD nudge hour (0-23)</label><input id="nudgeHour" type="number" min="0" max="23" /></div>
+
+          <h2>Tracked sections</h2>
+          <div class="checks">
+            <label><input id="sec-attendance" type="checkbox" /> Attendance</label>
+            <label><input id="sec-assignments" type="checkbox" /> Assignments</label>
+            <label><input id="sec-contests" type="checkbox" /> Contests</label>
+            <label><input id="sec-classes" type="checkbox" /> Classes</label>
+            <label><input id="sec-qotd" type="checkbox" /> Question of the Day</label>
+          </div>
+
+          <h2>Quiet hours</h2>
+          <div class="field"><label for="quietStart">Start</label><input id="quietStart" type="time" /></div>
+          <div class="field"><label for="quietEnd">End</label><input id="quietEnd" type="time" /></div>
+
+          <div class="save-row">
+            <button type="submit" class="primary">Save changes</button>
+            <span id="saved" hidden>Saved</span>
+          </div>
+        </form>
+
+        <h2>Help</h2>
+        <a id="wa" class="wa-btn" href="#" target="_blank" rel="noopener">Chat with us on WhatsApp</a>
+        <p class="hint" id="ver"></p>
+      </section>
+    </main>
+
+    <nav role="tablist" aria-label="Sections">
+      <button role="tab" id="tab-attendance" data-tab="attendance" aria-controls="page-attendance" aria-selected="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7" /></svg>
+        <span>Attendance</span>
+      </button>
+      <button role="tab" id="tab-alerts" data-tab="alerts" aria-controls="page-alerts" aria-selected="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21h4" /></svg>
+        <span>Alerts</span><b id="alertCount" class="count" hidden></b>
+      </button>
+      <button role="tab" id="tab-assignments" data-tab="assignments" aria-controls="page-assignments" aria-selected="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8l2 2v14H6V6zM9 11h6M9 15h6" /></svg>
+        <span>Assignments</span>
+      </button>
+      <button role="tab" id="tab-settings" data-tab="settings" aria-controls="page-settings" aria-selected="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12l2-1-1-3-2 .5-1.5-1.5.5-2-3-1-1 2h-2l-1-2-3 1 .5 2L5.5 8.500 3.500 8 2.500 11l2 1v2l-2 1 1 3 2-.5 1.500 1.500-.5 2 3 1 1-2h2l1 2 3-1-.5-2 1.500-1.500 2 .5 1-3-2-1z" /></svg>
+        <span>Settings</span>
+      </button>
+    </nav>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

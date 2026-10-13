@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><title>NST Reminder options</title></head>
+  <body>
+    <h1>NST Reminder options</h1>
+    <form id="opts">
+      <label>Daily digest time <input id="digestTime" type="time" value="21:00" /></label><br />
+      <label>Attendance threshold % <input id="threshold" type="number" min="1" max="99" value="75" /></label><br />
+      <label>Assignment lead times (minutes, comma separated) <input id="leads" value="1440, 60" /></label><br />
+      <label>Class lead time (minutes) <input id="classLead" type="number" min="1" max="120" value="10" /></label><br />
+      <label>QOTD nudge hour (0-23) <input id="nudgeHour" type="number" min="0" max="23" value="18" /></label><br />
+      <fieldset>
+        <legend>Tracked sections (uncheck to fully turn off)</legend>
+        <label><input id="sec-attendance" type="checkbox" checked /> Attendance</label><br />
+        <label><input id="sec-assignments" type="checkbox" checked /> Assignments</label><br />
+        <label><input id="sec-contests" type="checkbox" checked /> Contests</label><br />
+        <label><input id="sec-classes" type="checkbox" checked /> Classes</label><br />
+        <label><input id="sec-qotd" type="checkbox" checked /> Question of the Day</label><br />
+      </fieldset><br />
+      <label>Quiet hours start <input id="quietStart" type="time" /></label>
+      <label>end <input id="quietEnd" type="time" /></label><br />
+      <button type="submit">Save</button>
+      <span id="saved" hidden>Saved.</span>
+    </form>
+    <hr />
+    <section>
+      <h2>Need help?</h2>
+      <p>Have a query about NST Reminder? Message us directly on WhatsApp:</p>
+      <p><a href="https://wa.me/916359242153?text=Hi!%20I%20have%20a%20query%20about%20NST%20Reminder%20(v0.1.0)%3A%20" target="_blank" rel="noopener">💬 Chat on WhatsApp</a></p>
+    </section>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
